@@ -24,10 +24,16 @@ class Dataset(BaseDataset):
         "person"
     ]
 
-    def __init__(self, images_dir, masks_dir, height=640, width=640, classes=None, augmentation=None):
-        self.ids = os.listdir(images_dir)
-        self.images_fps = [os.path.join(images_dir, image_id) for image_id in self.ids]
-        self.masks_fps = [os.path.join(masks_dir, image_id[:-4] + ".png") for image_id in self.ids]
+    def __init__(self, data_root, annotation_path, height=640, width=640, classes=None, augmentation=None):
+        self.images_fps = []
+        self.masks_fps = []
+        # read lines from a file
+        with open(annotation_path, "r") as file:
+            lines = file.readlines()
+        for line in lines:
+            image_name, mask_name = line.strip().split()
+            self.images_fps.append(os.path.join(data_root, image_name))
+            self.masks_fps.append(os.path.join(data_root, mask_name))
         self.height, self.width = height, width
 
         # Always map background ('unlabelled') to 0
@@ -75,7 +81,7 @@ class Dataset(BaseDataset):
         return image, mask_remap
 
     def __len__(self):
-        return len(self.ids)
+        return len(self.images_fps)
 
 
 # training set images augmentation
@@ -211,10 +217,12 @@ class CamVidModel(pl.LightningModule):
             tp, fp, fn, tn, reduction="micro-imagewise"
         )
         dataset_iou = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
+        dataset_f1 = smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro")
 
         metrics = {
             f"{stage}_per_image_iou": per_image_iou,
             f"{stage}_dataset_iou": dataset_iou,
+            f"{stage}_dataset_f1": dataset_f1
         }
 
         self.log_dict(metrics, prog_bar=True)
@@ -260,36 +268,31 @@ class CamVidModel(pl.LightningModule):
 
 
 if __name__ == "__main__":
-    DATA_DIR = "/home/hq63/segmentation/dataset/merge"
+    torch.set_float32_matmul_precision('medium')
 
-    x_train_dir = os.path.join(DATA_DIR, "train", "images")
-    y_train_dir = os.path.join(DATA_DIR, "train", "masks")
-
-    x_valid_dir = os.path.join(DATA_DIR, "val", "images")
-    y_valid_dir = os.path.join(DATA_DIR, "val", "masks")
-
+    DATA_DIR = "data/merge"
     train_dataset = Dataset(
-        x_train_dir,
-        y_train_dir,
+        DATA_DIR,
+        "data/merge/dummy.txt",
         augmentation=get_training_augmentation(),
     )
-    image, mask = train_dataset[0]
+
     valid_dataset = Dataset(
-        x_valid_dir,
-        y_valid_dir,
+         DATA_DIR,
+        "data/merge/test.txt",
         augmentation=get_validation_augmentation(),
     )
     # Change to > 0 if not on Windows machine
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=0)
-    valid_loader = DataLoader(valid_dataset, batch_size=8, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=3)
+    valid_loader = DataLoader(valid_dataset, batch_size=4, shuffle=False, num_workers=3)
 
     # Some training hyperparameters
-    EPOCHS = 50
+    EPOCHS = 10
     T_MAX = EPOCHS * len(train_loader)
     # Always include the background as a class
     OUT_CLASSES = len(train_dataset.AREA_CLASSES)
 
-    model = CamVidModel("FPN", "resnext50_32x4d", in_channels=3, out_classes=OUT_CLASSES)
+    model = CamVidModel("DeepLabV3", "resnext50_32x4d", in_channels=3, out_classes=OUT_CLASSES)
 
     trainer = pl.Trainer(max_epochs=EPOCHS, log_every_n_steps=1)
 

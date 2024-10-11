@@ -6,6 +6,7 @@ __pycache__/
 .venv*
 examples/images*
 examples/annotations*
+lightning_logs/
 
 # C extensions
 *.so
