@@ -10,7 +10,7 @@ import random
 
 from utility.fs_handler import get_filename_from_path
 from mytransforms import seg_train_transform
-from model import BASModel
+from model import BASModel, CamVidModel
 
 
 def detect(input_path, output_path, vname, weight_path, write_video=False):
@@ -30,6 +30,7 @@ def detect(input_path, output_path, vname, weight_path, write_video=False):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     model = BASModel("DeepLabV3", "resnext50_32x4d", in_channels=3, obj_classes=2, area_classes=4)
+    # model = CamVidModel("DeepLabV3", "resnext50_32x4d", in_channels=3, out_classes=2)
     model.load_state_dict(torch.load(weight_path, weights_only=True)["state_dict"])
     model.to(device)
     model.eval()
@@ -80,7 +81,6 @@ def detect(input_path, output_path, vname, weight_path, write_video=False):
                 elif 3 in tres:
                     msg, color = "Level-3 Trespasser", (0,255,0)  
                 tres_found = (msg != "")
-                # combined_frame = cv2.putText(combined_frame, msg, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 1, cv2.LINE_AA)
                 
                 output_frame = combined_frame.astype(np.uint8)
                 exe_time.append(1 / (t1 - t0))
